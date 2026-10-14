@@ -336,6 +336,7 @@ body:not(.opened) .fab{opacity:0;pointer-events:none}
     if (gate.classList.contains('open')) return;
     gate.classList.add('open'); body.classList.add('opened'); body.classList.remove('locked');
     playChime();
+    try { if (ac) { const t = ac.currentTime + .15; dagga(t,.8); tilli(t,.5); dagga(t+.2,.8); tilli(t+.2,.5); dagga(t+.4,1); tilli(t+.4,.7); } } catch {}
     if (!reduce){ setTimeout(() => shower(90), 500); }
     setTimeout(() => gate.classList.add('gone'), reduce ? 50 : 1700);
   }
@@ -417,25 +418,56 @@ body:not(.opened) .fab{opacity:0;pointer-events:none}
       o.type = 'triangle'; o.frequency.value = f; g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.12, t+.02); g.gain.exponentialRampToValueAtTime(.001, t+1.2);
       o.connect(g).connect(a.destination); o.start(t); o.stop(t+1.3); }); } catch {}
   }
-  function bass(t){ const a = ac, o = a.createOscillator(), g = a.createGain();
-    o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(48, t+.25);
-    g.gain.setValueAtTime(.9, t); g.gain.exponentialRampToValueAtTime(.001, t+.35); o.connect(g).connect(a.destination); o.start(t); o.stop(t+.4); }
-  let noiseBuf;
-  function tilli(t, v=.5){ const a = ac;
-    if(!noiseBuf){ noiseBuf = a.createBuffer(1, a.sampleRate*.2, a.sampleRate); const d = noiseBuf.getChannelData(0); for(let i=0;i<d.length;i++) d[i] = Math.random()*2-1; }
-    const s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
-    s.buffer = noiseBuf; f.type = 'bandpass'; f.frequency.value = 2400; f.Q.value = 1.2;
-    g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(.001, t+.09);
-    s.connect(f).connect(g).connect(a.destination); s.start(t); s.stop(t+.12);
-    const o = a.createOscillator(), g2 = a.createGain(); o.frequency.value = 520; g2.gain.setValueAtTime(v*.25, t); g2.gain.exponentialRampToValueAtTime(.001, t+.08); o.connect(g2).connect(a.destination); o.start(t); o.stop(t+.1); }
-  // Bhangra chaal: 8 steps per bar (B = bass, T = tilli)
-  const PATTERN = ['B','','T','T','B','T','','T'];
+  /* ---- Realistic dhol: dagga (bass head) + tilli (treble head) + room reverb ---- */
+  let dbus = null, dnoise = null;
+  function dholBus(){
+    if (dbus) return dbus;
+    const a = ac, comp = a.createDynamicsCompressor(); comp.threshold.value = -12; comp.ratio.value = 4; comp.connect(a.destination);
+    const len = a.sampleRate*1.3, ir = a.createBuffer(2, len, a.sampleRate);
+    for (let c=0;c<2;c++){ const d = ir.getChannelData(c); for (let i=0;i<len;i++) d[i] = (Math.random()*2-1)*Math.pow(1-i/len, 3.2); }
+    const conv = a.createConvolver(), wet = a.createGain(); conv.buffer = ir; wet.gain.value = .22; conv.connect(wet).connect(comp);
+    dbus = a.createGain(); dbus.gain.value = .9; dbus.connect(comp); dbus.connect(conv);
+    dnoise = a.createBuffer(1, a.sampleRate, a.sampleRate); const d = dnoise.getChannelData(0); for (let i=0;i<d.length;i++) d[i] = Math.random()*2-1;
+    return dbus;
+  }
+  function warm(){ const ws = ac.createWaveShaper(), n = 1024, cu = new Float32Array(n); for (let i=0;i<n;i++){ const x = i/n*2-1; cu[i] = Math.tanh(2.2*x); } ws.curve = cu; return ws; }
+  function dagga(t, v=1){
+    const a = ac, out = dholBus(), sh = warm(), g = a.createGain(); sh.connect(g).connect(out);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.9*v, t+.004); g.gain.exponentialRampToValueAtTime(.001, t+.65);
+    const o = a.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(68, t+.09); o.frequency.exponentialRampToValueAtTime(58, t+.6);
+    o.connect(sh); o.start(t); o.stop(t+.7);
+    const o2 = a.createOscillator(), g2 = a.createGain(); o2.frequency.setValueAtTime(235, t); o2.frequency.exponentialRampToValueAtTime(112, t+.08);
+    g2.gain.setValueAtTime(.35*v, t); g2.gain.exponentialRampToValueAtTime(.001, t+.25); o2.connect(g2).connect(out); o2.start(t); o2.stop(t+.3);
+    const n = a.createBufferSource(), f = a.createBiquadFilter(), ng = a.createGain(); n.buffer = dnoise; f.type = 'bandpass'; f.frequency.value = 380; f.Q.value = 1.4;
+    ng.gain.setValueAtTime(.6*v, t); ng.gain.exponentialRampToValueAtTime(.001, t+.06); n.connect(f).connect(ng).connect(out); n.start(t, Math.random()*.5); n.stop(t+.08);
+  }
+  function tilli(t, v=.7){
+    const a = ac, out = dholBus();
+    const n = a.createBufferSource(), hp = a.createBiquadFilter(), g = a.createGain(); n.buffer = dnoise; hp.type = 'highpass'; hp.frequency.value = 1800;
+    g.gain.setValueAtTime(.55*v, t); g.gain.exponentialRampToValueAtTime(.001, t+.035); n.connect(hp).connect(g).connect(out); n.start(t, Math.random()*.5); n.stop(t+.05);
+    [[540,.5,.11],[1270,.3,.07],[2150,.18,.05]].forEach(([fr,vol,dec]) => {
+      const o = a.createOscillator(), og = a.createGain(); o.type = 'triangle';
+      o.frequency.setValueAtTime(fr*1.06, t); o.frequency.exponentialRampToValueAtTime(fr, t+.015);
+      og.gain.setValueAtTime(vol*v, t); og.gain.exponentialRampToValueAtTime(.001, t+dec); o.connect(og).connect(out); o.start(t); o.stop(t+dec+.02);
+    });
+  }
+  // Bhangra chaal on a triplet grid (12 steps per bar); every 4th bar is a fill
+  const GROOVE = ['D','','t','D','','t','D','','t','D','t','t'];
+  const FILL   = ['D','t','t','D','t','t','t','t','t','D','D','D'];
   let playing = false, step = 0, nextT = 0, timer = null;
-  const STEP = 60/170/2;
-  function sched(){ while (nextT < ac.currentTime + .12){ const p = PATTERN[step%8];
-      if (p==='B') { bass(nextT); tilli(nextT,.25); } else if (p==='T') tilli(nextT, step%2 ? .35 : .5);
-      if (step % 16 === 0 && !reduce) { const r = dholBtn.getBoundingClientRect(); setTimeout(() => burst(r.left + 24, r.top, 12), (nextT-ac.currentTime)*1000); }
-      nextT += STEP; step++; } }
+  const STEP = 60/100/3;
+  function sched(){
+    while (nextT < ac.currentTime + .15){
+      const bar = Math.floor(step/12), pat = bar % 4 === 3 ? FILL : GROOVE, p = pat[step % 12];
+      const t = nextT + (Math.random()-.5)*.012, acc = step % 3 === 0 ? 1 : .72;
+      if (p === 'D'){ dagga(t, acc); tilli(t, .55*acc); }
+      else if (p === 't') tilli(t, .6*acc*(.85 + Math.random()*.3));
+      else if (Math.random() < .35) tilli(t, .18);
+      if (step % 24 === 0 && !reduce) { const r = dholBtn.getBoundingClientRect(); setTimeout(() => burst(r.left + 24, r.top, 12), (nextT-ac.currentTime)*1000); }
+      nextT += STEP; step++;
+    }
+  }
   const dholBtn = document.getElementById('dholBtn'), dholLbl = document.getElementById('dholLbl');
   dholBtn.addEventListener('click', () => {
     try { ctx(); ac.resume(); } catch { return; }
