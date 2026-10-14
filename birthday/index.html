@@ -198,8 +198,8 @@ section.st{margin:30px auto 0;padding:26px 18px;border-radius:22px;background:rg
 .mark::before,.mark::after{content:"✦";margin:0 8px;font-size:10px;vertical-align:2px}
 
 /* toast + fabs */
-#toast{position:fixed;left:50%;top:calc(18px + env(safe-area-inset-top,0px));transform:translate(-50%,-140%);z-index:90;padding:10px 20px;border-radius:999px;background:var(--cream);color:#22113f;font-weight:800;box-shadow:0 10px 30px rgba(0,0,0,.4);transition:transform .45s cubic-bezier(.3,1.5,.5,1);white-space:nowrap;max-width:calc(100vw - 32px);overflow:hidden;text-overflow:ellipsis}
-#toast.show{transform:translate(-50%,0)}
+#toast{position:fixed;left:50%;top:calc(18px + env(safe-area-inset-top,0px));transform:translate(-50%,-250%);opacity:0;z-index:90;padding:10px 20px;border-radius:999px;background:var(--cream);color:#22113f;font-weight:800;box-shadow:0 10px 30px rgba(0,0,0,.4);transition:transform .45s cubic-bezier(.3,1.5,.5,1);white-space:nowrap;max-width:calc(100vw - 32px);overflow:hidden;text-overflow:ellipsis}
+#toast.show{transform:translate(-50%,0);opacity:1}
 .fab{position:fixed;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:85;border:1.5px solid var(--gold);border-radius:999px;background:rgba(19,11,48,.92);color:var(--gold);font-weight:800;font-size:14px;padding:7px 13px;box-shadow:0 8px 20px rgba(0,0,0,.4);backdrop-filter:blur(6px);transition:opacity .5s}
 #musicBtn{right:16px}
 #replayBtn{left:16px}
