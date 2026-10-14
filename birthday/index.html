@@ -153,9 +153,14 @@ section.st{margin:30px auto 0;padding:26px 18px;border-radius:22px;background:rg
 .wishmade{font-family:var(--f-display);font-size:24px;color:var(--teal);margin:4px 0 10px}
 
 /* deck */
-.deck{position:relative;height:250px;max-width:400px;margin:0 auto 14px;touch-action:pan-y}
-.wcard{position:absolute;inset:0;border-radius:20px;padding:28px 24px;display:grid;align-content:center;gap:10px;text-align:left;
-  background:var(--bg);color:#22113f;box-shadow:0 18px 40px rgba(0,0,0,.35);transition:transform .45s cubic-bezier(.2,.8,.3,1),opacity .45s;user-select:none;-webkit-user-select:none}
+.deck{position:relative;display:flex;gap:14px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;
+  margin:0 -18px 12px;padding:12px max(7.5%, calc(50% - 190px)) 22px;scrollbar-width:none;touch-action:pan-x pan-y}
+.deck::-webkit-scrollbar{display:none}
+.wcard{flex:0 0 85%;max-width:380px;min-height:230px;scroll-snap-align:center;scroll-snap-stop:always;border-radius:20px;padding:26px 22px;display:grid;align-content:center;gap:10px;text-align:left;
+  background:var(--bg);color:#22113f;box-shadow:0 14px 30px rgba(0,0,0,.35);transform:scale(var(--k,1)) rotate(var(--rt,0deg));opacity:var(--op,1);transition:transform .15s ease-out,opacity .15s;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;cursor:pointer}
+.dots{display:flex;gap:7px;justify-content:center;margin:0 0 14px}
+.dots button{width:9px;height:9px;padding:0;border-radius:50%;border:0;background:rgba(255,255,255,.3);transition:width .25s,background .25s}
+.dots button.on{width:24px;border-radius:6px;background:var(--gold)}
 .wcard .q{font-family:var(--f-display);font-size:54px;line-height:.5;color:rgba(34,17,63,.25);height:22px}
 .wcard p{margin:0;font-size:20px;line-height:1.45;font-weight:600;text-wrap:pretty}
 .wcard p.pa{font-size:23px;font-weight:700}
@@ -282,8 +287,9 @@ body.locked .fab{opacity:0;pointer-events:none}
   <!-- Wishes deck -->
   <section class="st">
     <h2>Wishes for you</h2>
-    <p class="sub">Swipe the card or tap it to see the next wish.</p>
+    <p class="sub">Swipe left or right, or tap a card, to see the next wish.</p>
     <div class="deck" id="deck"></div>
+    <div class="dots" id="dots"></div>
     <div class="row">
       <button class="btn ghost" id="prevW" aria-label="Previous wish">← Back</button>
       <span class="count" id="wCount">1 / 8</span>
@@ -576,32 +582,38 @@ body.locked .fab{opacity:0;pointer-events:none}
     el.innerHTML = `<div class="q">“</div><p class="${pa?'pa':''}">${txt}</p><div class="from">With love, the whole family</div>`;
     deck.appendChild(el); cards.push(el);
   });
-  function layout(fly){
+  // Native swipe carousel (scroll-snap): smooth on every phone
+  const dotsEl = $('#dots');
+  cards.forEach((el,i) => {
+    const d = document.createElement('button'); d.setAttribute('aria-label', `Wish ${i+1}`);
+    d.addEventListener('click', () => { audio(); go(i); }); dotsEl.appendChild(d);
+    el.addEventListener('click', () => { audio(); go((i+1) % cards.length); });
+  });
+  function go(i){
+    const el = cards[i];
+    deck.scrollTo({ left: el.offsetLeft - (deck.clientWidth - el.offsetWidth)/2, behavior: reduce ? 'auto' : 'smooth' });
+  }
+  let ticking = false;
+  function onScroll(){
+    ticking = false;
+    const mid = deck.scrollLeft + deck.clientWidth/2; let best = 0, bestD = 1e9;
     cards.forEach((el,i) => {
-      const pos = (i - wi + cards.length) % cards.length;
-      el.style.zIndex = cards.length - pos;
-      if (pos < 3){ el.style.opacity = 1; el.style.transform = `translateY(${pos*12}px) scale(${1 - pos*.05}) rotate(${pos ? (pos%2? 3:-3) : 0}deg)`; }
-      else { el.style.opacity = 0; el.style.transform = 'translateY(36px) scale(.85)'; }
-      el.style.pointerEvents = pos === 0 ? 'auto' : 'none';
+      const c = el.offsetLeft + el.offsetWidth/2, dist = c - mid, ad = Math.abs(dist);
+      if (ad < bestD){ bestD = ad; best = i; }
+      const f = Math.min(1, ad / el.offsetWidth);
+      el.style.setProperty('--k', (1 - f*.08).toFixed(3));
+      el.style.setProperty('--op', (1 - f*.35).toFixed(3));
+      el.style.setProperty('--rt', `${(dist / el.offsetWidth * 4).toFixed(2)}deg`);
     });
+    if (best !== wi){ wi = best; if (ac) tone(820 + wi*30, ac.currentTime, .12, .04, 'sine'); }
     $('#wCount').textContent = `${wi+1} / ${cards.length}`;
+    [...dotsEl.children].forEach((d,i) => d.classList.toggle('on', i === wi));
   }
-  function next(dir=1){
-    const top = cards[wi];
-    if (dir > 0){ top.style.transform = `translateX(${(top._dx||1)>0?'':'-'}140%) rotate(${(top._dx||1)>0?24:-24}deg)`; top.style.opacity = 0;
-      setTimeout(() => { wi = (wi+1) % cards.length; top._dx = 0; layout(); }, 260); }
-    else { wi = (wi - 1 + cards.length) % cards.length; layout(); }
-    if (ac) tone(dir>0?880:660, ac.currentTime, .15, .05, 'sine');
-  }
-  $('#nextW').addEventListener('click', () => { audio(); next(1); });
-  $('#prevW').addEventListener('click', () => { audio(); next(-1); });
-  let sx0 = 0, dragging = false, moved = false;
-  deck.addEventListener('pointerdown', e => { const top = cards[wi]; if (!top.contains(e.target)) return; dragging = true; moved = false; sx0 = e.clientX; top.classList.add('dragging'); top.setPointerCapture(e.pointerId); audio(); });
-  deck.addEventListener('pointermove', e => { if (!dragging) return; const dx = e.clientX - sx0; if (Math.abs(dx) > 6) moved = true; const top = cards[wi]; top._dx = dx; top.style.transform = `translateX(${dx}px) rotate(${dx/14}deg)`; });
-  const end = () => { if (!dragging) return; dragging = false; const top = cards[wi]; top.classList.remove('dragging');
-    if (!moved || Math.abs(top._dx||0) > 80) next(1); else { top._dx = 0; layout(); } };
-  deck.addEventListener('pointerup', end); deck.addEventListener('pointercancel', end);
-  layout();
+  deck.addEventListener('scroll', () => { if (!ticking){ ticking = true; requestAnimationFrame(onScroll); } }, { passive: true });
+  addEventListener('resize', () => requestAnimationFrame(onScroll));
+  $('#nextW').addEventListener('click', () => { audio(); go((wi+1) % cards.length); });
+  $('#prevW').addEventListener('click', () => { audio(); go((wi-1+cards.length) % cards.length); });
+  onScroll();
 
   /* ---------- Fireworks sky ---------- */
   const sky = $('#sky');
